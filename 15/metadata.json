@@ -1,0 +1,5 @@
+{
+  "name": "Physics Type Drop",
+  "description": "A 3D interactive experience where typed letters spawn as metallic objects and fall into a physics-simulated container.",
+  "requestFramePermissions": []
+}
