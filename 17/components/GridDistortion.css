@@ -13,3 +13,11 @@
   touch-action: none;
 }
 
+/* Ensure canvas respects safe areas on mobile */
+@media (max-width: 768px) {
+  .distortion-container {
+    height: calc(100vh - 45vh);
+    max-height: calc(100vh - 45vh);
+    /* Canvas will be above controls panel */
+  }
+}

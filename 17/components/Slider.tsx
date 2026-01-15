@@ -85,8 +85,8 @@ const Slider: React.FC<SliderProps> = ({ label, value, min, max, step = 1, onCha
   const percentage = ((value - min) / (max - min)) * 100;
 
   return (
-    <div className="mb-4 md:mb-6">
-      <div className="flex justify-between mb-2 text-xs uppercase tracking-widest text-gray-400">
+    <div className="mb-3 md:mb-6">
+      <div className="flex justify-between mb-2 md:mb-2 text-xs md:text-xs uppercase tracking-widest text-gray-400">
         <label>{label}</label>
         <span>{typeof value === 'number' ? value.toFixed(step < 1 ? 2 : 0) : value}</span>
       </div>
