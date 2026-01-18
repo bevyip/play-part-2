@@ -16,6 +16,12 @@
       /* Prevent scroll on ripple expansion */
     }
 
+    /* Performance optimization for iframe usage */
+    #root {
+      content-visibility: auto;
+      contain-intrinsic-size: 600px 400px;
+    }
+
     /* Custom scrollbar for the side panel */
     ::-webkit-scrollbar {
       width: 8px;

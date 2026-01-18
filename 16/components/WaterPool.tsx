@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { PoolConfig, Ripple } from "../types";
 import { CHARACTERS } from "../constants";
 
@@ -39,6 +39,9 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
 
   // Scale state for responsive resizing
   const [scale, setScale] = useState(1);
+
+  // Visibility state for performance optimization (iframe/parent page visibility)
+  const isVisibleRef = useRef(true);
 
   // Float Physics State ref (mutable for performance)
   const floatPhysicsRef = useRef({
@@ -161,9 +164,15 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
     handleInteraction(e, touch.clientX, touch.clientY);
   };
 
-  // Animation Loop
-  useEffect(() => {
+  // Create the update loop function (extracted for reuse)
+  const createUpdateLoop = useCallback((): (() => void) => {
     const update = () => {
+      // Pause if not visible
+      if (!isVisibleRef.current || document.hidden) {
+        animationFrameRef.current = undefined;
+        return;
+      }
+
       const now = Date.now();
       const { rippleSpeed, rippleIntensity, propagationDistance, gridDensity } =
         config;
@@ -304,13 +313,71 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
       animationFrameRef.current = requestAnimationFrame(update);
     };
 
-    animationFrameRef.current = requestAnimationFrame(update);
+    return update;
+  }, [config]);
+
+  // Intersection Observer for iframe visibility detection
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          isVisibleRef.current = entry.isIntersecting;
+          // If becoming visible, restart animation if it was paused
+          if (entry.isIntersecting && !animationFrameRef.current) {
+            const update = createUpdateLoop();
+            animationFrameRef.current = requestAnimationFrame(update);
+          }
+        });
+      },
+      {
+        threshold: 0.01, // Trigger when at least 1% is visible
+        rootMargin: '50px', // Start animating slightly before entering viewport
+      }
+    );
+
+    const element = containerRef.current?.parentElement?.parentElement;
+    if (element) {
+      observer.observe(element);
+    }
 
     return () => {
-      if (animationFrameRef.current)
-        cancelAnimationFrame(animationFrameRef.current);
+      observer.disconnect();
     };
-  }, [config, gridItems.length]);
+  }, [createUpdateLoop]);
+
+  // Page Visibility API for parent page visibility
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      isVisibleRef.current = !document.hidden;
+      // If page becomes visible and animation is paused, restart it
+      if (!document.hidden && !animationFrameRef.current && containerRef.current) {
+        const update = createUpdateLoop();
+        animationFrameRef.current = requestAnimationFrame(update);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [createUpdateLoop]);
+
+  // Animation Loop
+  useEffect(() => {
+    const update = createUpdateLoop();
+    
+    // Only start animation if visible
+    if (isVisibleRef.current && !document.hidden) {
+      animationFrameRef.current = requestAnimationFrame(update);
+    }
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = undefined;
+      }
+    };
+  }, [config, gridItems.length, createUpdateLoop]);
 
   const deckShadow =
     Array.from(
