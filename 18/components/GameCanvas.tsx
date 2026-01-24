@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { GAME_WIDTH, GAME_HEIGHT, PALETTE, SPRITE_SIZE, SPRITE_COUNT, SCALE } from '../constants';
 import { GameState, Sprite, Obstacle, EntityType, Rect, Fish, SpriteResult } from '../types';
-import { playBlip, playChirp } from '../utils/audio';
+import { playBlip, playChirp } from '../utils/audio.js';
 
 // Import Renderers
 import { drawSprite } from './renderers/SpriteRenderer';

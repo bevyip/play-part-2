@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { SpriteResult, ProcessingStatus } from '../types';
-import { generateSpriteFromImage } from '../logic/translation';
-import { fileToBase64, getImageDimensions } from '../utils/imageUtils';
+import { generateSpriteFromImage } from '../logic/translation.js';
+import { fileToBase64, getImageDimensions } from '../utils/imageUtils.js';
 import SpritePreview from './SpritePreview';
 
 interface SidePanelProps {
