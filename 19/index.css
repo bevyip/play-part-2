@@ -1,0 +1,283 @@
+/* Carousel Container */
+.carousel-container {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, rgba(20, 20, 20, 0.5) 0%, #121212 100%);
+  overflow: hidden;
+  gap: 100px;
+}
+
+/* Carousel Circle Container */
+.carousel-circle-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  perspective: 3500px;
+  transform-style: preserve-3d;
+}
+
+/* Carousel Scene - The rotating container */
+.carousel-scene {
+  width: 300px;
+  height: 400px;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Card Wrapper - Positions each card in 3D space */
+.card-wrapper {
+  position: absolute;
+  width: 250px;
+  height: 350px;
+  left: 50%;
+  top: 50%;
+  margin-left: -125px;
+  margin-top: -175px;
+  transform-style: preserve-3d;
+}
+
+/* Card Styling */
+.card {
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1) 0.2s, border-color 0.3s ease;
+  cursor: default;
+  position: relative;
+}
+
+.card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  /* border: 1px solid rgba(255, 255, 255, 0.87); */
+  /* border-radius: 4px; */
+}
+
+.artist-name {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 500;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  letter-spacing: 0.01em;
+}
+
+.play-button {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  cursor: pointer;
+  overflow: hidden;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease, opacity 0.26s ease-out;
+  z-index: 10;
+  opacity: 0;
+  animation: fadeInPlayButton 0.4s ease-in-out 0.7s forwards;
+  pointer-events: auto;
+  
+  /* GlassSurface-style background */
+  background: rgba(255, 255, 255, 0.1);
+  
+  /* GlassSurface-style backdrop filter */
+  backdrop-filter: blur(12px) saturate(1.8) brightness(1.1);
+  -webkit-backdrop-filter: blur(12px) saturate(1.8) brightness(1.1);
+  
+  /* GlassSurface-style border */
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  
+  /* GlassSurface-style box shadows for depth */
+  box-shadow:
+    0 0 2px 1px rgba(0, 0, 0, 0.15) inset,
+    0 0 10px 4px rgba(0, 0, 0, 0.1) inset,
+    0px 4px 16px rgba(17, 17, 26, 0.05),
+    0px 8px 24px rgba(17, 17, 26, 0.05),
+    0px 16px 56px rgba(17, 17, 26, 0.05),
+    0px 4px 16px rgba(17, 17, 26, 0.05) inset,
+    0px 8px 24px rgba(17, 17, 26, 0.05) inset,
+    0px 16px 56px rgba(17, 17, 26, 0.05) inset;
+}
+
+@keyframes fadeInPlayButton {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.play-button:hover {
+  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(14px) saturate(2) brightness(1.15);
+  -webkit-backdrop-filter: blur(14px) saturate(2) brightness(1.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 0 2px 1px rgba(0, 0, 0, 0.2) inset,
+    0 0 10px 4px rgba(0, 0, 0, 0.15) inset,
+    0px 4px 16px rgba(17, 17, 26, 0.08),
+    0px 8px 24px rgba(17, 17, 26, 0.08),
+    0px 16px 56px rgba(17, 17, 26, 0.08),
+    0px 4px 16px rgba(17, 17, 26, 0.08) inset,
+    0px 8px 24px rgba(17, 17, 26, 0.08) inset,
+    0px 16px 56px rgba(17, 17, 26, 0.08) inset;
+}
+
+.play-button:active {
+  transform: scale(0.95);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.play-button svg {
+  width: 20px;
+  height: 20px;
+  margin-left: 2px; /* Slight offset to center the play icon visually */
+  position: relative;
+  z-index: 1;
+}
+
+.song-name {
+  position: absolute;
+  bottom: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 600;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  text-align: center;
+  width: 100%;
+  opacity: 0;
+  animation: fadeInSongName 0.5s ease-in-out 0.7s forwards;
+}
+
+@keyframes fadeInSongName {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Jukebox Arrows Container */
+/* Responsive Design for Mobile */
+@media (max-width: 768px) {
+  /* Scale down carousel scene */
+  .carousel-scene {
+    width: 250px;
+    height: 333px;
+  }
+
+  /* Scale down cards */
+  .card-wrapper {
+    width: 200px;
+    height: 280px;
+    margin-left: -100px;
+    margin-top: -140px;
+  }
+
+  /* Adjust perspective for mobile */
+  .carousel-circle-container {
+    perspective: 2500px;
+  }
+
+  /* Smaller font for artist name */
+  .artist-name {
+    font-size: 12px;
+    bottom: 10px;
+    left: 10px;
+  }
+
+  .song-name {
+    font-size: 14px;
+    bottom: -35px;
+  }
+
+  .play-button {
+    width: 40px;
+    height: 40px;
+    bottom: 10px;
+    right: 10px;
+  }
+
+  .play-button svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* Extra small devices */
+@media (max-width: 480px) {
+  /* Further scale down for very small screens */
+  .carousel-scene {
+    width: 200px;
+    height: 267px;
+  }
+
+  .card-wrapper {
+    width: 160px;
+    height: 224px;
+    margin-left: -80px;
+    margin-top: -112px;
+  }
+
+  .carousel-container {
+    gap: 50px;
+  }
+
+  .carousel-circle-container {
+    perspective: 2000px;
+  }
+
+  .artist-name {
+    font-size: 11px;
+    bottom: 8px;
+    left: 8px;
+  }
+
+  .song-name {
+    font-size: 12px;
+    bottom: -30px;
+  }
+
+  .play-button {
+    width: 36px;
+    height: 36px;
+    bottom: 8px;
+    right: 8px;
+  }
+
+  .play-button svg {
+    width: 14px;
+    height: 14px;
+  }
+}
