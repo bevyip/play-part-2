@@ -8,4 +8,10 @@ export const DEFAULT_CONFIG: PoolConfig = {
   gridDensity: 40,
 };
 
+/** When embedded in an iframe, use a coarser grid to reduce DOM nodes and CPU. */
+export const IFRAME_GRID_DENSITY = 24;
+
+/** Target FPS when in iframe to avoid lagging the parent page. */
+export const IFRAME_TARGET_FPS = 30;
+
 export const CHARACTERS = "01";
