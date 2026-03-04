@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { PoolConfig, Ripple } from "../types";
-import { CHARACTERS, IFRAME_GRID_DENSITY, IFRAME_TARGET_FPS } from "../constants";
-
-const isInIframe = typeof window !== "undefined" && window.self !== window.top;
+import { CHARACTERS } from "../constants";
 
 interface WaterPoolProps {
   config: PoolConfig;
@@ -55,9 +53,6 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
     vRotation: 0,
   });
 
-  // Throttle FPS when in iframe so parent page doesn't lag
-  const lastFrameTimeRef = useRef(0);
-
   // Refs for DOM elements
   const letterRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const floatRef = useRef<HTMLDivElement>(null);
@@ -84,18 +79,16 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const effectiveGridDensity = isInIframe ? IFRAME_GRID_DENSITY : config.gridDensity;
-
   // Initialize or update grid
   useEffect(() => {
-    const totalItems = effectiveGridDensity * effectiveGridDensity;
+    const totalItems = config.gridDensity * config.gridDensity;
     const newItems = Array.from({ length: totalItems }, () => ({
       char: getRandomChar(),
       color: `rgba(255, 255, 255, ${0.4 + Math.random() * 0.6})`,
     }));
     setGridItems(newItems);
     letterRefs.current = new Array(totalItems).fill(null);
-  }, [effectiveGridDensity, resetTrigger]);
+  }, [config.gridDensity, resetTrigger]);
 
   // Handle Mouse/Touch Interaction
   const handleInteraction = (
@@ -181,19 +174,8 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
       }
 
       const now = Date.now();
-
-      // Throttle FPS when in iframe to reduce main-thread load on parent
-      if (isInIframe) {
-        const minInterval = 1000 / IFRAME_TARGET_FPS;
-        if (now - lastFrameTimeRef.current < minInterval) {
-          animationFrameRef.current = requestAnimationFrame(update);
-          return;
-        }
-        lastFrameTimeRef.current = now;
-      }
-
-      const { rippleSpeed, rippleIntensity, propagationDistance } = config;
-      const gridDensity = effectiveGridDensity;
+      const { rippleSpeed, rippleIntensity, propagationDistance, gridDensity } =
+        config;
 
       // Filter out dead ripples
       ripplesRef.current = ripplesRef.current.filter((r) => {
@@ -332,7 +314,7 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
     };
 
     return update;
-  }, [config, effectiveGridDensity]);
+  }, [config]);
 
   // Intersection Observer for iframe visibility detection
   useEffect(() => {
@@ -477,9 +459,7 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
               height: `${POOL_HEIGHT}px`,
               transformStyle: "preserve-3d",
               backgroundColor: "#1E88E5",
-              // Isolate layout/paint so parent page isn't blocked by iframe work
-              contain: "layout style paint",
-              transform: "translateZ(0)",
+
               borderTop: "12px solid #9ca3af",
               borderLeft: "10px solid #858b94",
               borderRight: "1px solid rgba(255,255,255,0.3)",
@@ -552,7 +532,7 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
               className="relative z-20"
               style={{
                 display: "grid",
-                gridTemplateColumns: `repeat(${effectiveGridDensity}, 1fr)`,
+                gridTemplateColumns: `repeat(${config.gridDensity}, 1fr)`,
                 width: "100%",
                 height: "100%",
                 gap: "0px",
