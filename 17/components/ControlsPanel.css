@@ -1,0 +1,227 @@
+:root {
+  --panel17-radius: 4px;
+}
+
+.app-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.stage-area {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  overflow: clip;
+  min-width: 0;
+  min-height: 0;
+}
+
+.panel17 {
+  position: absolute;
+  z-index: 10;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  width: 200px;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
+  top: 1rem;
+  right: 1rem;
+  background: rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--panel17-radius);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+
+.panel17-inner {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 14px 18px;
+}
+
+.panel17-inner::-webkit-scrollbar {
+  width: 10px;
+}
+
+.panel17-inner::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.panel17-inner::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.panel17-group {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.panel17-group + .panel17-group {
+  margin-top: 20px;
+}
+
+.panel17-group-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #ffffff;
+}
+
+.panel17-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.panel17-row label {
+  font-size: 13px;
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.08em;
+  color: #ffffff;
+}
+
+.panel17-value {
+  font-size: 13px;
+  color: #ffffff;
+  min-width: 42px;
+  text-align: right;
+}
+
+.panel17-slider {
+  width: 100%;
+  appearance: none;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+}
+
+.panel17-slider::-webkit-slider-runnable-track {
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.78),
+    rgba(255, 255, 255, 0.18)
+  );
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.panel17-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -6px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85) inset;
+}
+
+.panel17-slider::-moz-range-track {
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.78),
+    rgba(255, 255, 255, 0.18)
+  );
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.panel17-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85) inset;
+}
+
+.panel17-drop {
+  border: 1px dashed rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  user-select: none;
+  transition: background 120ms ease;
+}
+
+.panel17-drop:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.panel17-drop.is-dragging {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.panel17-drop-title {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0;
+  color: #ffffff;
+}
+
+.panel17-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.panel17-mobile-handle {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.panel17-mobile-handle span {
+  width: 48px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+@media (max-width: 768px) {
+  .panel17 {
+    width: 100%;
+    max-width: none;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    max-height: min(52vh, calc(100vh - 1rem));
+    max-height: min(52vh, calc(100dvh - 1rem));
+    border-radius: 12px 12px 0 0;
+    border-bottom: none;
+  }
+}
+
+@media (min-width: 769px) {
+  .panel17-mobile-handle {
+    display: none;
+  }
+}
