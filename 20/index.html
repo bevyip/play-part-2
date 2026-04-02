@@ -1,0 +1,1365 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASCII Filter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap"
+    rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #000000;
+      --panel: rgba(0, 0, 0, 0.82);
+      --panelBorder: #ffffff;
+      --ink: #ffffff;
+      --muted: #ffffff;
+      --accent: #ffffff;
+      --danger: #ffffff;
+      --shadow: #ffffff;
+      --radius: 4px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+        "Courier New", monospace;
+      background: radial-gradient(1100px 820px at 18% 18%, rgba(255, 255, 255, 0.07), transparent 58%),
+        radial-gradient(900px 820px at 88% 16%, rgba(255, 255, 255, 0.04), transparent 60%),
+        radial-gradient(900px 900px at 50% 120%, rgba(255, 255, 255, 0.03), transparent 62%),
+        var(--bg);
+      color: var(--ink);
+      overflow: hidden;
+    }
+
+    .app {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 1fr 320px;
+    }
+
+    .stage {
+      position: relative;
+      height: 100%;
+      /* Prevent oversized ASCII canvas from overlapping the side panel */
+      overflow: hidden;
+      overflow: clip;
+      z-index: 0;
+      background: linear-gradient(180deg, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.72)),
+        radial-gradient(900px 700px at 40% 30%, rgba(255, 255, 255, 0.06), transparent 62%);
+    }
+
+    .stageInner {
+      position: absolute;
+      inset: 0;
+    }
+
+    .viewport {
+      position: absolute;
+      inset: 0;
+      overflow: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+
+    .viewport::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    .viewport::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.22);
+    }
+
+    .viewport::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.25);
+    }
+
+    #output {
+      position: relative;
+      image-rendering: pixelated;
+    }
+
+    .scanlines {
+      pointer-events: none;
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(to bottom,
+          rgba(0, 0, 0, 0.0),
+          rgba(0, 0, 0, 0.0) 2px,
+          rgba(0, 0, 0, 0.18) 3px),
+        radial-gradient(140% 90% at 50% 10%, rgba(255, 255, 255, 0.06), transparent 50%),
+        radial-gradient(120% 100% at 50% 120%, rgba(0, 0, 0, 0.35), transparent 52%);
+      mix-blend-mode: overlay;
+      opacity: 0.58;
+    }
+
+    .stageVignette {
+      pointer-events: none;
+      position: absolute;
+      inset: -4%;
+      background: radial-gradient(75% 65% at 50% 48%, transparent 52%, rgba(0, 0, 0, 0.75) 100%);
+      opacity: 0.68;
+    }
+
+    .previewBox {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 180px;
+      height: 120px;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      border-radius: 4px;
+      background: #000;
+      z-index: 5;
+      overflow: hidden;
+    }
+
+    #preview {
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: auto;
+    }
+
+    .panel {
+      position: relative;
+      z-index: 1000;
+      isolation: isolate;
+      height: 100%;
+      overflow: hidden;
+      border-left: 1px solid rgba(255, 255, 255, 0.14);
+      background: #000000;
+    }
+
+    .panelInner {
+      height: 100%;
+      overflow: auto;
+      padding: 14px 14px 18px;
+    }
+
+    .panelHeader {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      padding: 12px 10px 12px;
+      margin: -14px -14px 10px;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+    }
+
+    .panelTitle {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .panelTitle strong {
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .panelTitle span {
+      font-size: 11px;
+      color: #ffffff;
+    }
+
+    .group {
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: var(--radius);
+      padding: 12px 12px 10px;
+      background: var(--panel);
+      box-shadow: 0 14px 46px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(0, 0, 0, 0.12) inset;
+      margin: 10px 0;
+    }
+
+    .groupTitle {
+      margin: 0 0 10px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #ffffff;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 10px;
+      margin: 10px 0;
+    }
+
+    .row label {
+      font-size: 13px;
+      font-variant-caps: all-small-caps;
+      letter-spacing: 0.08em;
+      color: #ffffff;
+    }
+
+    .value {
+      font-size: 13px;
+      color: #ffffff;
+      min-width: 42px;
+      text-align: right;
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 4px;
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0.35);
+    }
+
+    .segmented button {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: #ffffff;
+      padding: 9px 10px;
+      font-family: inherit;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    .segmented button[aria-pressed="true"] {
+      background: rgba(255, 255, 255, 0.06);
+      color: #ffffff;
+    }
+
+    .segmented button:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      user-select: none;
+    }
+
+    .switch {
+      position: relative;
+      width: 44px;
+      height: 26px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(0, 0, 0, 0.35);
+      cursor: pointer;
+    }
+
+    .switch::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22) inset;
+      transition: transform 120ms ease, background 120ms ease;
+    }
+
+    input[type="checkbox"]:checked+.switch {
+      background: rgba(255, 255, 255, 0.10);
+      border-color: rgba(255, 255, 255, 0.30);
+    }
+
+    input[type="checkbox"]:checked+.switch::after {
+      transform: translateX(18px);
+      background: rgba(255, 255, 255, 0.92);
+    }
+
+    .toggle input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    select,
+    input[type="text"] {
+      width: 100%;
+      padding: 9px 10px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(0, 0, 0, 0.35);
+      color: #ffffff;
+      outline: none;
+      font-family: inherit;
+      font-size: 12px;
+    }
+
+    select option {
+      background: #000000;
+      color: #ffffff;
+    }
+
+    input[type="text"]::placeholder {
+      color: rgba(255, 255, 255, 0.75);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    input[type="color"] {
+      width: 44px;
+      height: 28px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.35);
+      padding: 0;
+      cursor: pointer;
+    }
+
+    input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 4px;
+    }
+
+    input[type="color"]::-webkit-color-swatch {
+      border: 0;
+      border-radius: 4px;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+    }
+
+    .slider {
+      width: 100%;
+      appearance: none;
+      height: 18px;
+      background: transparent;
+      cursor: pointer;
+      outline: none;
+    }
+
+    .slider::-webkit-slider-runnable-track {
+      height: 2px;
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.18));
+      border-radius: 999px;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+    }
+
+    .slider::-webkit-slider-thumb {
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      margin-top: -6px;
+      border-radius: 999px;
+      background: #ffffff;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85) inset;
+    }
+
+    .slider::-moz-range-track {
+      height: 2px;
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.18));
+      border-radius: 999px;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+    }
+
+    .slider::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border: none;
+      border-radius: 999px;
+      background: #ffffff;
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85) inset;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .btn {
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 4px;
+      padding: 10px 10px;
+      background: transparent;
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .btn.danger {
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+
+    .btn.danger:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .fileRow {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .dropBox {
+      border: 1px dashed rgba(255, 255, 255, 0.35);
+      border-radius: 4px;
+      padding: 12px;
+      background: rgba(0, 0, 0, 0.22);
+      cursor: pointer;
+      user-select: none;
+      transition: background 120ms ease;
+    }
+
+    .dropBox:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .dropBox.isDragging {
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .dropBoxTitle {
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin: 0;
+      color: #ffffff;
+    }
+
+    .dropBoxMeta {
+      font-size: 13px;
+      color: #ffffff;
+      line-height: 1.35;
+      opacity: 0.9;
+      word-break: break-word;
+    }
+
+    .dropBoxActions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .btn.small {
+      padding: 8px 8px;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+    }
+
+    .hint {
+      margin-top: 10px;
+      font-size: 11px;
+      line-height: 1.35;
+      color: #ffffff;
+    }
+
+    .warn {
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    .srOnly {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <main class="stage" id="stage">
+      <div class="stageInner">
+        <div id="viewport" class="viewport">
+          <canvas id="output"></canvas>
+        </div>
+        <div class="previewBox" aria-hidden="true">
+          <canvas id="preview"></canvas>
+        </div>
+        <div class="scanlines"></div>
+        <div class="stageVignette"></div>
+      </div>
+
+      <video id="video" class="srOnly" playsinline muted></video>
+      <canvas id="capture" class="srOnly"></canvas>
+    </main>
+
+    <aside class="panel">
+      <div class="panelInner">
+        <section class="group">
+          <h2 class="groupTitle">Input</h2>
+          <div class="dropBoxActions" aria-hidden="true" style="margin-top: 0; margin-bottom: 10px">
+            <button class="btn small" id="testImage" type="button">Test image</button>
+            <button class="btn small" id="testVideo" type="button">Test video</button>
+          </div>
+          <div id="dropBox" class="dropBox" role="button" tabindex="0" aria-label="Upload or drop media">
+            <div class="dropBoxTitle">Upload / Drag &amp; drop</div>
+          </div>
+          <input class="srOnly" id="fileInput" type="file" accept="image/*,video/mp4,video/*" />
+        </section>
+
+        <section class="group">
+          <h2 class="groupTitle">Detail</h2>
+          <div class="row">
+            <label>Detail level</label>
+            <div class="value" id="detailVal">160×90</div>
+          </div>
+          <input class="slider" id="detail" type="range" min="1" max="300" value="160" />
+        </section>
+
+        <section class="group">
+          <h2 class="groupTitle">Character Set</h2>
+          <div class="row">
+            <label for="charsetPreset">Preset</label>
+          </div>
+          <select id="charsetPreset">
+            <option value="full" selected>FULL (@%#*+=-:. )</option>
+            <option value="minimal">MINIMAL (#:. )</option>
+            <option value="blocks">BLOCKS (█▓▒░ )</option>
+            <option value="simple">SIMPLE (#+.)</option>
+            <option value="custom">CUSTOM</option>
+          </select>
+          <div id="customSet" class="hidden" style="margin-top: 12px">
+            <div class="row">
+              <label for="customChars">Custom chars (dark to light)</label>
+              <div class="value" id="customLen">0</div>
+            </div>
+            <input id="customChars" type="text" value="@%#*+=-:. " />
+          </div>
+        </section>
+
+        <section class="group">
+          <h2 class="groupTitle">Text</h2>
+          <div class="row">
+            <label>Font size</label>
+            <div class="value" id="fontVal">14px</div>
+          </div>
+          <input class="slider" id="fontSize" type="range" min="6" max="28" value="14" />
+
+          <div class="row" style="margin-top: 12px">
+            <label>Letter spacing</label>
+            <div class="value" id="spacingVal">0px</div>
+          </div>
+          <input class="slider" id="letterSpacing" type="range" min="0" max="6" value="0" />
+        </section>
+
+        <section class="group">
+          <h2 class="groupTitle">Tone</h2>
+          <div class="row">
+            <label>Contrast</label>
+            <div class="value" id="contrastVal">100</div>
+          </div>
+          <input class="slider" id="contrast" type="range" min="0" max="200" value="100" />
+
+          <div class="row">
+            <label>Brightness</label>
+            <div class="value" id="brightnessVal">0</div>
+          </div>
+          <input class="slider" id="brightness" type="range" min="-100" max="100" value="0" />
+        </section>
+
+        <section class="group">
+          <h2 class="groupTitle">Colors</h2>
+          <div class="row">
+            <label>Mode</label>
+            <div class="segmented" role="group" aria-label="Color mode">
+              <button id="colorBW" type="button" aria-pressed="true">B&amp;W</button>
+              <button id="colorRGB" type="button" aria-pressed="false">Colored</button>
+            </div>
+          </div>
+          <div class="row" id="textRow">
+            <label>Text</label>
+            <input id="textColor" type="color" value="#ffffff" />
+          </div>
+          <div class="row">
+            <label>Background</label>
+            <input id="bgColor" type="color" value="#000000" />
+          </div>
+          <div class="row">
+            <label>Invert colors</label>
+            <label class="toggle">
+              <input id="invertColors" type="checkbox" />
+              <span class="switch" aria-hidden="true"></span>
+            </label>
+          </div>
+        </section>
+
+        <section class="group">
+          <h2 class="groupTitle">Export</h2>
+          <div class="actions">
+            <button class="btn primary" id="exportPng" type="button">PNG</button>
+            <button class="btn" id="exportSvg" type="button">SVG</button>
+            <button class="btn" id="exportTxt" type="button">TXT</button>
+            <button class="btn danger" id="copyTxt" type="button">Copy</button>
+          </div>
+          <div class="hint" id="exportHint"></div>
+        </section>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    (() => {
+      const $ = (id) => document.getElementById(id);
+
+      const stage = $("stage");
+      const viewport = $("viewport");
+      const output = $("output");
+      const out = output.getContext("2d", { alpha: false });
+      const preview = $("preview");
+      const prev = preview.getContext("2d", { alpha: false });
+      const capture = $("capture");
+      const cap = capture.getContext("2d", { willReadFrequently: true });
+      const video = $("video");
+      const image = new Image();
+
+      // no header/status UI; keep internal status for logic only
+      const exportHint = $("exportHint");
+
+      const fileInput = $("fileInput");
+      const dropBox = $("dropBox");
+      const testImage = $("testImage");
+      const testVideo = $("testVideo");
+
+      const detail = $("detail");
+      const detailVal = $("detailVal");
+
+      const charsetPreset = $("charsetPreset");
+      const customSet = $("customSet");
+      const customChars = $("customChars");
+      const customLen = $("customLen");
+
+      const fontSize = $("fontSize");
+      const letterSpacing = $("letterSpacing");
+      const contrast = $("contrast");
+      const brightness = $("brightness");
+      const bgColor = $("bgColor");
+      const textColor = $("textColor");
+      const textRow = $("textRow");
+      const invertColors = $("invertColors");
+      const colorBW = $("colorBW");
+      const colorRGB = $("colorRGB");
+
+      const fontVal = $("fontVal");
+      const spacingVal = $("spacingVal");
+      const contrastVal = $("contrastVal");
+      const brightnessVal = $("brightnessVal");
+      const exportPng = $("exportPng");
+      const exportSvg = $("exportSvg");
+      const exportTxt = $("exportTxt");
+      const copyTxt = $("copyTxt");
+
+      const PRESETS = {
+        full: "@%#*+=-:. ",
+        blocks: "█▓▒░ ",
+        minimal: "#:. ",
+        simple: "#+.",
+      };
+
+      const state = {
+        density: PRESETS.full,
+        customDensity: PRESETS.full,
+        detailCols: 160,
+        fontPx: 14,
+        letterSpacingPx: 0,
+        contrast: 100,
+        brightness: 0,
+        text: "#ffffff",
+        bg: "#000000",
+        invertColors: false,
+        colorMode: "bw", // bw | rgb
+        hasMedia: false,
+        mediaKind: "none", // none | image | video
+        mediaW: 1,
+        mediaH: 1,
+        lastObjectUrl: null,
+        demoT: 0,
+        lastAscii: "",
+        dpr: 1,
+        stageW: 1,
+        stageH: 1,
+        detailInitialized: false,
+        lastCover: null,
+      };
+
+      function setColorMode(next) {
+        state.colorMode = next === "rgb" ? "rgb" : "bw";
+        colorBW.setAttribute("aria-pressed", String(state.colorMode === "bw"));
+        colorRGB.setAttribute("aria-pressed", String(state.colorMode === "rgb"));
+        const hideText = state.colorMode === "rgb";
+        textRow.classList.toggle("hidden", hideText);
+      }
+
+      function clamp255(v) {
+        return Math.max(0, Math.min(255, v));
+      }
+
+      function applyContrast(lum, c) {
+        const f = c / 100; // 1 = neutral, 0 = flat mid-gray
+        return (lum - 128) * f + 128;
+      }
+
+      function setDensityFromPreset() {
+        const v = charsetPreset.value;
+        if (v === "custom") {
+          customSet.classList.remove("hidden");
+          const s = (customChars.value || "").replace(/\s+/g, " ");
+          state.customDensity = s.length ? s : PRESETS.full;
+          state.density = state.customDensity.length >= 2 ? state.customDensity : PRESETS.full;
+          customLen.textContent = String(state.customDensity.length);
+        } else {
+          customSet.classList.add("hidden");
+          state.density = PRESETS[v] ?? PRESETS.full;
+        }
+      }
+
+      function syncUiText() {
+        const { cols, rows } = getGrid();
+        detailVal.textContent = `${cols}×${rows}`;
+        fontVal.textContent = `${state.fontPx}px`;
+        spacingVal.textContent = `${state.letterSpacingPx}px`;
+        contrastVal.textContent = String(state.contrast);
+        brightnessVal.textContent = String(state.brightness);
+      }
+
+      function setStatus(text) {
+        // intentionally no-op (UI status removed)
+        void text;
+      }
+
+      function resizeOutput() {
+        const dpr = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+        const w = Math.max(1, Math.floor(viewport.clientWidth));
+        const h = Math.max(1, Math.floor(viewport.clientHeight));
+        state.dpr = dpr;
+        state.stageW = w;
+        state.stageH = h;
+        // Output canvas size is controlled per-frame based on detail level.
+        updateDetailBounds();
+      }
+
+      function computeCharMetrics() {
+        const fontPx = Math.max(6, Math.min(28, Math.floor(state.fontPx)));
+        const spacing = Math.max(0, Math.min(12, Math.floor(state.letterSpacingPx)));
+        const charW = Math.max(2, Math.floor(fontPx * 0.62) + spacing);
+        const charH = Math.max(2, Math.floor(fontPx));
+        return { fontPx, spacing, charW, charH };
+      }
+
+      function getMaxCols() {
+        const mw = Math.max(1, state.mediaW || 1);
+        const mh = Math.max(1, state.mediaH || 1);
+
+        // Detail is a resolution knob (independent of font size).
+        // Bound it by stage pixel dimensions (and a sane cap) for performance.
+        const byWidth = Math.floor(state.stageW);
+        const byHeight = Math.floor(state.stageH * (mw / mh)); // ensure rows can exist for the given aspect
+        const hardCap = 800;
+
+        return Math.max(1, Math.min(byWidth, byHeight, hardCap));
+      }
+
+      function updateDetailBounds() {
+        const maxCols = getMaxCols();
+        detail.min = "1";
+        detail.max = String(maxCols);
+        if (!state.detailInitialized) {
+          state.detailCols = Math.max(1, Math.min(maxCols, Math.round(maxCols * 0.2)));
+          state.detailInitialized = true;
+        } else {
+          state.detailCols = Math.max(1, Math.min(maxCols, Math.floor(state.detailCols)));
+        }
+        detail.value = String(state.detailCols);
+      }
+
+      function getGrid() {
+        const { fontPx, spacing, charW, charH } = computeCharMetrics();
+        const maxCols = getMaxCols();
+        const cols = Math.max(1, Math.min(maxCols, Math.floor(state.detailCols)));
+        const mw = Math.max(1, state.mediaW || 1);
+        const mh = Math.max(1, state.mediaH || 1);
+        const rows = Math.max(1, Math.round(cols * (charW / charH) * (mh / mw)));
+        return { fontPx, spacing, charW, charH, cols, rows };
+      }
+
+      function ensureCapture(cols, rows) {
+        if (capture.width !== cols || capture.height !== rows) {
+          capture.width = cols;
+          capture.height = rows;
+        }
+      }
+
+      function pickChar(lum, density, isInverted) {
+        const n = Math.max(2, density.length);
+        const t = Math.max(0, Math.min(1, lum / 255));
+        let idx = Math.floor(t * (n - 1));
+        if (isInverted) idx = (n - 1) - idx;
+        return density[idx] ?? density[n - 1] ?? " ";
+      }
+
+      function getEffectiveColors() {
+        if (!state.invertColors) return { text: state.text, bg: state.bg };
+        return { text: state.bg, bg: state.text };
+      }
+
+      function renderFrame() {
+        const { fontPx, spacing, charW, charH, cols, rows } = getGrid();
+        ensureCapture(cols, rows);
+
+        const w = state.stageW;
+        const h = state.stageH;
+        const renderW = Math.max(1, Math.floor(cols * charW));
+        const renderH = Math.max(1, Math.floor(rows * charH));
+
+        // Make the output canvas match the ASCII canvas size.
+        const dpr = state.dpr;
+        const ow = Math.floor(renderW * dpr);
+        const oh = Math.floor(renderH * dpr);
+        if (output.width !== ow || output.height !== oh) {
+          output.width = ow;
+          output.height = oh;
+          output.style.width = `${renderW}px`;
+          output.style.height = `${renderH}px`;
+        }
+
+        out.setTransform(dpr, 0, 0, dpr, 0, 0);
+        out.clearRect(0, 0, renderW, renderH);
+        const colors = getEffectiveColors();
+        out.fillStyle = colors.bg;
+        out.fillRect(0, 0, renderW, renderH);
+
+        out.font = `${fontPx}px "IBM Plex Mono", ui-monospace, monospace`;
+        out.textBaseline = "top";
+
+        if (!state.hasMedia) {
+          renderDemo(cols, rows, charW, charH, fontPx);
+          return;
+        }
+
+        if (state.mediaKind === "video") {
+          if (video.readyState < 2) {
+            setStatus("loading…");
+            renderDemo(cols, rows, charW, charH, fontPx);
+            return;
+          }
+          setStatus(video.paused ? "paused" : "live");
+          state.lastCover = drawCover(video, cap, cols, rows);
+        } else if (state.mediaKind === "image") {
+          setStatus("image");
+          if (!image.complete || image.naturalWidth === 0) {
+            setStatus("loading…");
+            renderDemo(cols, rows, charW, charH, fontPx);
+            return;
+          }
+          state.lastCover = drawCover(image, cap, cols, rows);
+        }
+        const img = cap.getImageData(0, 0, cols, rows).data;
+
+        const density = state.density.length ? state.density : PRESETS.full;
+        const brightOffset = state.brightness;
+        const contrastValue = state.contrast;
+        const txtLines = new Array(rows);
+
+        for (let y = 0; y < rows; y++) {
+          let line = "";
+          for (let x = 0; x < cols; x++) {
+            const i = (y * cols + x) * 4;
+            const r0 = img[i];
+            const g0 = img[i + 1];
+            const b0 = img[i + 2];
+
+            let lum = 0.299 * r0 + 0.587 * g0 + 0.114 * b0;
+            lum = applyContrast(lum, contrastValue) + brightOffset;
+            lum = clamp255(lum);
+
+            const ch = pickChar(lum, density, false);
+            line += ch;
+          }
+          txtLines[y] = line;
+        }
+        state.lastAscii = txtLines.join("\n");
+
+        if (state.colorMode === "rgb") {
+          // per-cell sampled colors
+          for (let y = 0; y < rows; y++) {
+            const line = txtLines[y];
+            for (let x = 0; x < cols; x++) {
+              const ch = line[x];
+              if (ch === " ") continue;
+              const i = (y * cols + x) * 4;
+              const r0 = img[i];
+              const g0 = img[i + 1];
+              const b0 = img[i + 2];
+              out.fillStyle = `rgb(${r0},${g0},${b0})`;
+              out.fillText(ch, x * charW, y * charH);
+            }
+          }
+        } else {
+          out.fillStyle = colors.text;
+          if (spacing === 0) {
+            for (let y = 0; y < rows; y++) {
+              const line = txtLines[y];
+              if (!line) continue;
+              out.fillText(line, 0, y * charH);
+            }
+          } else {
+            for (let y = 0; y < rows; y++) {
+              const line = txtLines[y];
+              for (let x = 0; x < cols; x++) {
+                const ch = line[x];
+                if (ch === " ") continue;
+                out.fillText(ch, x * charW, y * charH);
+              }
+            }
+          }
+        }
+
+        renderPreview({ cols, rows, charW, charH, renderW, renderH });
+      }
+
+      function renderPreview({ cols, rows, charW, charH, renderW, renderH }) {
+        const srcEl = state.mediaKind === "video" ? video : image;
+        if (!state.hasMedia) return;
+        if (state.mediaKind === "video" && video.readyState < 2) return;
+        if (state.mediaKind === "image" && (!image.complete || image.naturalWidth === 0)) return;
+        if (!state.lastCover) return;
+
+        const pw = preview.clientWidth || 180;
+        const ph = preview.clientHeight || 120;
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        const cw = Math.floor(pw * dpr);
+        const ch = Math.floor(ph * dpr);
+        if (preview.width !== cw || preview.height !== ch) {
+          preview.width = cw;
+          preview.height = ch;
+        }
+        prev.setTransform(dpr, 0, 0, dpr, 0, 0);
+        prev.clearRect(0, 0, pw, ph);
+        prev.fillStyle = "#000";
+        prev.fillRect(0, 0, pw, ph);
+
+        // Visible region in output-canvas pixel coords based on actual scroll + layout.
+        const vb = viewport.getBoundingClientRect();
+        const ob = output.getBoundingClientRect();
+        const ix0 = Math.max(vb.left, ob.left);
+        const iy0 = Math.max(vb.top, ob.top);
+        const ix1 = Math.min(vb.right, ob.right);
+        const iy1 = Math.min(vb.bottom, ob.bottom);
+        const viewW = Math.max(0, ix1 - ix0);
+        const viewH = Math.max(0, iy1 - iy0);
+        if (viewW <= 0 || viewH <= 0) return;
+        const viewX = ix0 - ob.left;
+        const viewY = iy0 - ob.top;
+
+        // Convert to capture coords (cols x rows)
+        const capX = viewX / charW;
+        const capY = viewY / charH;
+        const capW = viewW / charW;
+        const capH = viewH / charH;
+
+        // Invert the fit transform: capture = dx + src*scaleX, dy + src*scaleY
+        const { iw, ih, scaleX, scaleY, dx, dy } = state.lastCover;
+        let sx = (capX - dx) / scaleX;
+        let sy = (capY - dy) / scaleY;
+        let sw = capW / scaleX;
+        let sh = capH / scaleY;
+
+        // Clamp to source bounds
+        if (sx < 0) { sw += sx; sx = 0; }
+        if (sy < 0) { sh += sy; sy = 0; }
+        sw = Math.min(sw, iw - sx);
+        sh = Math.min(sh, ih - sy);
+        if (sw <= 0 || sh <= 0) return;
+
+        // Draw crop into preview WITHOUT stretching: contain (no cropping).
+        const cropAspect = sw / sh;
+        const boxAspect = pw / ph;
+        let dw = pw;
+        let dh = ph;
+        let dx2 = 0;
+        let dy2 = 0;
+        if (cropAspect > boxAspect) {
+          // fit width, letterbox top/bottom
+          dh = pw / cropAspect;
+          dy2 = (ph - dh) / 2;
+        } else {
+          // fit height, letterbox left/right
+          dw = ph * cropAspect;
+          dx2 = (pw - dw) / 2;
+        }
+        prev.drawImage(srcEl, sx, sy, sw, sh, dx2, dy2, dw, dh);
+      }
+
+      function renderDemo(cols, rows, charW, charH, step) {
+        state.demoT += 1;
+        const t = state.demoT / 60;
+        const dens = PRESETS.full;
+
+        // subtle monochrome drift (no text, no cursor)
+        for (let k = 0; k < 160; k++) {
+          const rx = (Math.sin(t * 0.55 + k * 1.77) * 0.5 + 0.5) * cols;
+          const ry = (Math.cos(t * 0.45 + k * 1.31) * 0.5 + 0.5) * rows;
+          const lum = (Math.sin(t * 1.3 + k * 0.9) * 0.5 + 0.5) * 255;
+          const ch = pickChar(lum, dens, false);
+          out.fillStyle = `rgba(255,255,255,${0.02 + (lum / 255) * 0.06})`;
+          out.fillText(ch, (rx | 0) * charW, (ry | 0) * charH);
+        }
+      }
+
+      function startLoop() {
+        const tick = () => {
+          renderFrame();
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }
+
+      function loadFile(file) {
+        if (!file) return;
+        if (!file.type.startsWith("video/") && !file.type.startsWith("image/")) return;
+
+        state.hasMedia = true;
+        setStatus("loading…");
+
+        if (state.lastObjectUrl) URL.revokeObjectURL(state.lastObjectUrl);
+        const url = URL.createObjectURL(file);
+        state.lastObjectUrl = url;
+
+        if (file.type.startsWith("video/")) {
+          state.mediaKind = "video";
+          video.src = url;
+          video.muted = true;
+          video.playsInline = true;
+          video.loop = true;
+          video.onloadeddata = async () => {
+            state.mediaW = video.videoWidth || 1;
+            state.mediaH = video.videoHeight || 1;
+            updateDetailBounds();
+            syncUiText();
+            setStatus("ready");
+            try {
+              await video.play();
+            } catch {
+              // ignore autoplay blocks; user still sees ASCII output from first frame when readyState allows
+            }
+          };
+        } else {
+          state.mediaKind = "image";
+          video.removeAttribute("src");
+          video.load();
+          image.src = url;
+          image.onload = () => {
+            state.mediaW = image.naturalWidth || 1;
+            state.mediaH = image.naturalHeight || 1;
+            updateDetailBounds();
+            syncUiText();
+            setStatus("ready");
+          };
+        }
+      }
+
+      function loadUrlAsMedia({ kind, url }) {
+        state.hasMedia = true;
+        setStatus("loading…");
+
+        if (state.lastObjectUrl) URL.revokeObjectURL(state.lastObjectUrl);
+        state.lastObjectUrl = null;
+
+        if (kind === "video") {
+          state.mediaKind = "video";
+          video.src = url;
+          video.muted = true;
+          video.playsInline = true;
+          video.loop = true;
+          video.onloadeddata = async () => {
+            state.mediaW = video.videoWidth || 1;
+            state.mediaH = video.videoHeight || 1;
+            updateDetailBounds();
+            syncUiText();
+            try {
+              await video.play();
+            } catch {
+              // ignore
+            }
+          };
+        } else {
+          state.mediaKind = "image";
+          video.removeAttribute("src");
+          video.load();
+          image.src = url;
+          image.onload = () => {
+            state.mediaW = image.naturalWidth || 1;
+            state.mediaH = image.naturalHeight || 1;
+            updateDetailBounds();
+            syncUiText();
+          };
+        }
+      }
+
+      function loadStarterImage() {
+        loadUrlAsMedia({ kind: "image", url: "/image.jpeg" });
+      }
+
+      // Upload / DnD
+      function openFilePicker() {
+        fileInput.click();
+      }
+
+      dropBox.addEventListener("click", openFilePicker);
+      dropBox.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openFilePicker();
+        }
+      });
+
+      testImage.addEventListener("click", (e) => {
+        e.stopPropagation();
+        loadUrlAsMedia({ kind: "image", url: "/image.jpeg" });
+      });
+      testVideo.addEventListener("click", (e) => {
+        e.stopPropagation();
+        loadUrlAsMedia({ kind: "video", url: "/video.mp4" });
+      });
+
+      fileInput.addEventListener("change", (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) loadFile(file);
+        fileInput.value = "";
+      });
+
+      ["dragenter", "dragover"].forEach((evt) => {
+        dropBox.addEventListener(evt, (e) => {
+          preventDefaults(e);
+          dropBox.classList.add("isDragging");
+        });
+      });
+      ["dragleave", "drop"].forEach((evt) => {
+        dropBox.addEventListener(evt, (e) => {
+          preventDefaults(e);
+          dropBox.classList.remove("isDragging");
+        });
+      });
+      dropBox.addEventListener("drop", (e) => {
+        const dt = e.dataTransfer;
+        const file = dt && dt.files && dt.files[0];
+        if (file) loadFile(file);
+      });
+
+      function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      ["dragenter", "dragover", "dragleave", "drop"].forEach((evt) => {
+        stage.addEventListener(evt, preventDefaults);
+      });
+      stage.addEventListener("drop", (e) => {
+        const dt = e.dataTransfer;
+        const file = dt && dt.files && dt.files[0];
+        if (file) loadFile(file);
+      });
+
+      // Controls
+      detail.addEventListener("input", () => {
+        state.detailCols = Number(detail.value);
+        syncUiText();
+      });
+
+      charsetPreset.addEventListener("change", () => {
+        setDensityFromPreset();
+        syncUiText();
+      });
+
+      customChars.addEventListener("input", () => {
+        const s = (customChars.value || "").replace(/\s+/g, " ");
+        state.customDensity = s;
+        customLen.textContent = String(state.customDensity.length);
+        if (charsetPreset.value === "custom") {
+          state.density = state.customDensity.length >= 2 ? state.customDensity : PRESETS.full;
+        }
+      });
+      fontSize.addEventListener("input", () => {
+        state.fontPx = Number(fontSize.value);
+        syncUiText();
+      });
+      letterSpacing.addEventListener("input", () => {
+        state.letterSpacingPx = Number(letterSpacing.value);
+        syncUiText();
+      });
+      contrast.addEventListener("input", () => {
+        state.contrast = Number(contrast.value);
+        syncUiText();
+      });
+      brightness.addEventListener("input", () => {
+        state.brightness = Number(brightness.value);
+        syncUiText();
+      });
+      bgColor.addEventListener("input", () => {
+        state.bg = bgColor.value;
+      });
+      textColor.addEventListener("input", () => {
+        state.text = textColor.value;
+      });
+      invertColors.addEventListener("change", () => {
+        state.invertColors = invertColors.checked;
+      });
+      colorBW.addEventListener("click", () => setColorMode("bw"));
+      colorRGB.addEventListener("click", () => setColorMode("rgb"));
+
+      function downloadBlob(blob, filename) {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      }
+
+      exportPng.addEventListener("click", async () => {
+        exportHint.textContent = "Exporting PNG…";
+        // Export the currently visible viewport area.
+        const vb = viewport.getBoundingClientRect();
+        const ob = output.getBoundingClientRect();
+        const ix0 = Math.max(vb.left, ob.left);
+        const iy0 = Math.max(vb.top, ob.top);
+        const ix1 = Math.min(vb.right, ob.right);
+        const iy1 = Math.min(vb.bottom, ob.bottom);
+        const vw = Math.max(0, ix1 - ix0);
+        const vh = Math.max(0, iy1 - iy0);
+        if (vw <= 0 || vh <= 0) {
+          exportHint.textContent = "Nothing visible to export.";
+          return;
+        }
+
+        const sx = ix0 - ob.left;
+        const sy = iy0 - ob.top;
+        const dpr = state.dpr;
+        const tmp = document.createElement("canvas");
+        tmp.width = Math.floor(vw * dpr);
+        tmp.height = Math.floor(vh * dpr);
+        const t = tmp.getContext("2d");
+        t.drawImage(output, sx * dpr, sy * dpr, vw * dpr, vh * dpr, 0, 0, vw * dpr, vh * dpr);
+
+        const blob = await new Promise((resolve) => tmp.toBlob(resolve, "image/png"));
+        if (!blob) {
+          exportHint.textContent = "PNG export failed.";
+          return;
+        }
+        downloadBlob(blob, "ascii-filter.png");
+        exportHint.textContent = "Saved PNG.";
+      });
+
+      function escapeXml(s) {
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }
+
+      exportTxt.addEventListener("click", () => {
+        exportHint.textContent = "Exporting TXT…";
+        const blob = new Blob([state.lastAscii || ""], { type: "text/plain;charset=utf-8" });
+        downloadBlob(blob, "ascii-filter.txt");
+        exportHint.textContent = "Saved TXT.";
+      });
+
+      copyTxt.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(state.lastAscii || "");
+          exportHint.textContent = "Copied ASCII to clipboard.";
+        } catch {
+          exportHint.textContent = "Clipboard blocked by browser.";
+        }
+      });
+
+      exportSvg.addEventListener("click", () => {
+        exportHint.textContent = "Exporting SVG…";
+        const { fontPx, charW, charH, cols, rows } = getGrid();
+        const colors = getEffectiveColors();
+        const lines = (state.lastAscii || "").split("\n");
+        const width = cols * charW;
+        const height = rows * charH;
+        const safeLines = lines.length ? lines : Array.from({ length: rows }, () => "");
+        const tspans = safeLines
+          .slice(0, rows)
+          .map((line, i) => `<tspan x="0" dy="${i === 0 ? 0 : charH}">${escapeXml(line)}</tspan>`)
+          .join("");
+
+        const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect width="100%" height="100%" fill="${colors.bg}"/>
+  <text x="0" y="${charH * 0.9}" fill="${colors.text}" font-family="IBM Plex Mono, ui-monospace, monospace" font-size="${fontPx}" xml:space="preserve">${tspans}</text>
+</svg>`;
+        downloadBlob(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }), "ascii-filter.svg");
+        exportHint.textContent = state.colorMode === "rgb" ? "Saved SVG (monochrome)." : "Saved SVG.";
+      });
+
+      // Init
+      function drawCover(imgEl, ctx, w, h) {
+        const iw = imgEl.videoWidth || imgEl.naturalWidth || 1;
+        const ih = imgEl.videoHeight || imgEl.naturalHeight || 1;
+        // Fit the media to the ASCII sampling grid.
+        // The grid aspect is already adjusted for character cell aspect, so stretching here
+        // avoids letterboxing and results in correct-looking output (no "black bars").
+        const scaleX = w / iw;
+        const scaleY = h / ih;
+        const dw = w;
+        const dh = h;
+        const dx = 0;
+        const dy = 0;
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(imgEl, dx, dy, dw, dh);
+        return { iw, ih, scaleX, scaleY, dx, dy, dw, dh, w, h };
+      }
+
+      resizeOutput();
+      window.addEventListener("resize", resizeOutput);
+
+      setDensityFromPreset();
+      fontSize.value = String(state.fontPx);
+      letterSpacing.value = String(state.letterSpacingPx);
+      contrast.value = String(state.contrast);
+      brightness.value = String(state.brightness);
+      bgColor.value = state.bg;
+      textColor.value = state.text;
+      invertColors.checked = state.invertColors;
+      setColorMode(state.colorMode);
+      loadStarterImage();
+      syncUiText();
+      startLoop();
+    })();
+  </script>
+</body>
+
+</html>
