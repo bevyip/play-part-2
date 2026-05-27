@@ -7,7 +7,6 @@ export interface PoolConfig {
 }
 
 export interface Ripple {
-  id: number;
   x: number;
   y: number;
   startTime: number;

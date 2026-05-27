@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { PoolConfig, Ripple } from "../types";
 import { CHARACTERS } from "../constants";
 
@@ -7,44 +7,202 @@ interface WaterPoolProps {
   resetTrigger: number;
 }
 
-interface GridItem {
+interface GridCell {
   char: string;
-  color: string;
+  alpha: number;
+  x: number;
+  y: number;
 }
 
-// Helper to get random char
-const getRandomChar = () =>
-  CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
-
-// Distance helper
-const dist = (x1: number, y1: number, x2: number, y2: number) =>
-  Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-
-// Pool logical dimensions
 const POOL_WIDTH = 600;
 const POOL_HEIGHT = 350;
 const DECK_PADDING = 30;
-// Total width for scaling calculation (Pool + Padding on both sides)
 const TOTAL_WIDTH = POOL_WIDTH + DECK_PADDING * 2;
+const BORDER_LEFT = 10;
+const BORDER_TOP = 12;
 
-// Float Physics Constants
-const FLOAT_RADIUS = 45; // 90px width / 2
+const FLOAT_RADIUS = 45;
 const FLOAT_FRICTION = 0.96;
-const FLOAT_MASS = 3.0;
+const FLOAT_PUSH = 0.4 / 3;
+
+const RIPPLE_MIN_DIST_SQ = 14 * 14;
+const MAX_RIPPLES = 8;
+const WAVE_WIDTH = 40;
+const FLOAT_WAVE_WIDTH = 60;
+const RIPPLE_TAIL = 100;
+
+const RING_MASK = "radial-gradient(transparent 30%, black 31%)";
+
+const DECK_SHADOW =
+  Array.from({ length: 16 }, (_, i) => `${i + 1}px ${i + 1}px 0px #9ca3af`).join(
+    ", "
+  ) + ", 30px 30px 40px rgba(0,0,0,0.2)";
+
+const distSq = (dx: number, dy: number) => dx * dx + dy * dy;
+
+function buildGrid(density: number): GridCell[] {
+  const cellW = POOL_WIDTH / density;
+  const cellH = POOL_HEIGHT / density;
+  return Array.from({ length: density * density }, (_, i) => ({
+    char: CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)],
+    alpha: 0.4 + Math.random() * 0.6,
+    x: (i % density) * cellW + cellW / 2,
+    y: Math.floor(i / density) * cellH + cellH / 2,
+  }));
+}
+
+function clientToLogical(
+  container: HTMLElement,
+  clientX: number,
+  clientY: number
+): { x: number; y: number } | null {
+  const rect = container.getBoundingClientRect();
+  const x = ((clientX - rect.left) * POOL_WIDTH) / rect.width - BORDER_LEFT;
+  const y = ((clientY - rect.top) * POOL_HEIGHT) / rect.height - BORDER_TOP;
+
+  if (x < 0 || x > POOL_WIDTH || y < 0 || y > POOL_HEIGHT) return null;
+  return { x, y };
+}
+
+function sampleWave(
+  d: number,
+  radius: number,
+  waveWidth: number,
+  propagationDistance: number,
+  intensity: number
+): number | null {
+  const front = d - radius;
+  if (Math.abs(front) >= waveWidth) return null;
+
+  return (
+    Math.sin((front / waveWidth) * Math.PI * 2) *
+    intensity *
+    Math.max(0, 1 - d / propagationDistance)
+  );
+}
+
+function bounceAxis(pos: number, vel: number, min: number, max: number) {
+  if (pos < min) return { pos: min, vel: vel * -0.4 };
+  if (pos > max) return { pos: max, vel: vel * -0.4 };
+  return { pos, vel };
+}
+
+function cellDisplacement(
+  cell: GridCell,
+  ripples: Ripple[],
+  now: number,
+  rippleSpeed: number,
+  rippleIntensity: number,
+  propagationDistance: number
+) {
+  const reachSq = (propagationDistance + WAVE_WIDTH) ** 2;
+  let totalX = 0;
+  let totalY = 0;
+  let totalScale = 1;
+
+  for (const ripple of ripples) {
+    const dx = cell.x - ripple.x;
+    const dy = cell.y - ripple.y;
+    const d2 = distSq(dx, dy);
+    if (d2 > reachSq) continue;
+
+    const d = Math.sqrt(d2);
+    const strength = sampleWave(
+      d,
+      (now - ripple.startTime) * rippleSpeed,
+      WAVE_WIDTH,
+      propagationDistance,
+      rippleIntensity
+    );
+    if (strength === null) continue;
+
+    const inv = d === 0 ? 0 : 1 / d;
+    totalX += dx * inv * strength;
+    totalY += dy * inv * strength;
+    totalScale += (strength / rippleIntensity) * 0.3;
+  }
+
+  return { totalX, totalY, totalScale };
+}
+
+function drawGrid(
+  ctx: CanvasRenderingContext2D,
+  grid: GridCell[],
+  letterSize: number,
+  ripples: Ripple[],
+  now: number,
+  rippleSpeed: number,
+  rippleIntensity: number,
+  propagationDistance: number
+) {
+  ctx.clearRect(0, 0, POOL_WIDTH, POOL_HEIGHT);
+  ctx.font = `${letterSize}px system-ui, -apple-system, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#fff";
+  ctx.shadowColor = "rgba(0, 0, 0, 0.2)";
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 2;
+
+  const animating = ripples.length > 0;
+
+  for (const cell of grid) {
+    ctx.save();
+
+    if (animating) {
+      const { totalX, totalY, totalScale } = cellDisplacement(
+        cell,
+        ripples,
+        now,
+        rippleSpeed,
+        rippleIntensity,
+        propagationDistance
+      );
+      const scaleVal = Math.max(0.5, Math.min(1.5, totalScale));
+      ctx.globalAlpha = Math.min(1, scaleVal) * cell.alpha;
+      ctx.translate(cell.x + totalX, cell.y + totalY);
+      ctx.scale(scaleVal, scaleVal);
+      ctx.fillText(cell.char, 0, 0);
+    } else {
+      ctx.globalAlpha = cell.alpha;
+      ctx.fillText(cell.char, cell.x, cell.y);
+    }
+
+    ctx.restore();
+  }
+}
+
+function updateFloatElements(
+  f: { x: number; y: number; rotation: number },
+  floatEl: HTMLDivElement | null,
+  shadowEl: HTMLDivElement | null
+) {
+  if (floatEl) {
+    floatEl.style.transform = `translate3d(${f.x - FLOAT_RADIUS}px, ${
+      f.y - FLOAT_RADIUS
+    }px, 5px) rotate(${f.rotation}deg)`;
+  }
+  if (shadowEl) {
+    shadowEl.style.transform = `translate3d(${f.x - 40 + f.x * 0.1}px, ${
+      f.y - 40 + f.y * 0.057
+    }px, 0)`;
+  }
+}
 
 const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
+  const configRef = useRef(config);
+  configRef.current = config;
+
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number | undefined>(undefined);
   const ripplesRef = useRef<Ripple[]>([]);
-
-  // Scale state for responsive resizing
-  const [scale, setScale] = useState(1);
-
-  // Visibility state for performance optimization (iframe/parent page visibility)
   const isVisibleRef = useRef(true);
+  const gridRef = useRef<GridCell[]>(buildGrid(config.gridDensity));
+  const gridDirtyRef = useRef(true);
+  const lastDensityRef = useRef(config.gridDensity);
 
-  // Float Physics State ref (mutable for performance)
-  const floatPhysicsRef = useRef({
+  const floatRef = useRef({
     x: POOL_WIDTH / 2,
     y: POOL_HEIGHT / 2,
     vx: 0,
@@ -53,384 +211,207 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
     vRotation: 0,
   });
 
-  // Refs for DOM elements
-  const letterRefs = useRef<(HTMLSpanElement | null)[]>([]);
-  const floatRef = useRef<HTMLDivElement>(null);
-  const floatShadowRef = useRef<HTMLDivElement>(null);
+  const pointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const lastRippleRef = useRef<{ x: number; y: number } | null>(null);
 
-  // State to force re-render of grid items when density changes
-  const [gridItems, setGridItems] = useState<GridItem[]>([]);
+  const floatElRef = useRef<HTMLDivElement>(null);
+  const floatShadowElRef = useRef<HTMLDivElement>(null);
 
-  // Handle Resize
+  const [scale, setScale] = useState(1);
+
   useEffect(() => {
-    const handleResize = () => {
-      const margin = 32; // Safety margin (e.g., 16px on each side)
-      const availableWidth = window.innerWidth - margin;
-
-      // Calculate scale to fit width
-      // We use TOTAL_WIDTH to ensure the deck padding is included in the fit
-      const newScale = Math.min(1, availableWidth / TOTAL_WIDTH);
-      setScale(newScale);
+    const onResize = () => {
+      setScale(Math.min(1, (window.innerWidth - 32) / TOTAL_WIDTH));
     };
-
-    window.addEventListener("resize", handleResize);
-    handleResize(); // Initial calculation
-
-    return () => window.removeEventListener("resize", handleResize);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Initialize or update grid
   useEffect(() => {
-    const totalItems = config.gridDensity * config.gridDensity;
-    const newItems = Array.from({ length: totalItems }, () => ({
-      char: getRandomChar(),
-      color: `rgba(255, 255, 255, ${0.4 + Math.random() * 0.6})`,
-    }));
-    setGridItems(newItems);
-    letterRefs.current = new Array(totalItems).fill(null);
-  }, [config.gridDensity, resetTrigger]);
-
-  // Handle Mouse/Touch Interaction
-  const handleInteraction = (
-    e: React.MouseEvent | React.TouchEvent,
-    clientX?: number,
-    clientY?: number
-  ) => {
-    if (!containerRef.current) return;
-
-    // Border widths defined in styles (logical pixels)
-    const borderLeft = 10;
-    const borderTop = 12;
-
-    let inputX, inputY;
-
-    if ("nativeEvent" in e && e.nativeEvent instanceof MouseEvent) {
-      inputX = e.nativeEvent.clientX;
-      inputY = e.nativeEvent.clientY;
-    } else if (clientX !== undefined && clientY !== undefined) {
-      inputX = clientX;
-      inputY = clientY;
-    } else {
-      return;
+    if (lastDensityRef.current !== config.gridDensity) {
+      gridRef.current = buildGrid(config.gridDensity);
+      lastDensityRef.current = config.gridDensity;
     }
+    gridDirtyRef.current = true;
+  }, [config.gridDensity, config.letterSize, resetTrigger]);
 
-    if (inputX === undefined || inputY === undefined) return;
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    if (!container || !canvas) return;
 
-    const rect = containerRef.current.getBoundingClientRect();
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-    // Calculate mapping from Visual space (which might be scaled) to Logical space (fixed 600x350)
-    // rect.width is the visual width on screen
-    const scaleX = POOL_WIDTH / rect.width;
-    const scaleY = POOL_HEIGHT / rect.height;
+    const ensureLoop = () => {
+      if (animationFrameRef.current || document.hidden || !isVisibleRef.current) {
+        return;
+      }
+      animationFrameRef.current = requestAnimationFrame(tick);
+    };
 
-    // Relative visual position
-    const visualRelX = inputX - rect.left;
-    const visualRelY = inputY - rect.top;
-
-    // Convert to Logical Coordinates
-    let logicalX = visualRelX * scaleX;
-    let logicalY = visualRelY * scaleY;
-
-    // Adjust for the logical borders manually since our logical coordinate system 0,0 is inside the content box
-    // but the rect includes the border.
-    logicalX -= borderLeft;
-    logicalY -= borderTop;
-
-    // Bounds check
-    if (
-      logicalX < 0 ||
-      logicalX > POOL_WIDTH ||
-      logicalY < 0 ||
-      logicalY > POOL_HEIGHT
-    )
-      return;
-
-    const now = Date.now();
-
-    ripplesRef.current.push({
-      id: Math.random(),
-      x: logicalX,
-      y: logicalY,
-      startTime: now,
-    });
-  };
-
-  const onMouseMove = (e: React.MouseEvent) => {
-    handleInteraction(e);
-  };
-
-  const onTouchMove = (e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    handleInteraction(e, touch.clientX, touch.clientY);
-  };
-
-  // Create the update loop function (extracted for reuse)
-  const createUpdateLoop = useCallback((): (() => void) => {
-    const update = () => {
-      // Pause if not visible
-      if (!isVisibleRef.current || document.hidden) {
+    const tick = () => {
+      if (document.hidden || !isVisibleRef.current) {
         animationFrameRef.current = undefined;
         return;
       }
 
       const now = Date.now();
-      const { rippleSpeed, rippleIntensity, propagationDistance, gridDensity } =
-        config;
+      const { rippleSpeed, rippleIntensity, propagationDistance, letterSize } =
+        configRef.current;
 
-      // Filter out dead ripples
-      ripplesRef.current = ripplesRef.current.filter((r) => {
-        const age = now - r.startTime;
-        const radius = age * rippleSpeed;
-        return radius < propagationDistance + 100 && age < 4000;
-      });
-
-      const activeRipples = ripplesRef.current;
-      const letters = letterRefs.current;
-
-      // --- 1. Update Grid Letters ---
-      const cellWidth = POOL_WIDTH / gridDensity;
-      const cellHeight = POOL_HEIGHT / gridDensity;
-
-      for (let i = 0; i < letters.length; i++) {
-        const el = letters[i];
-        if (!el) continue;
-
-        const row = Math.floor(i / gridDensity);
-        const col = i % gridDensity;
-
-        const originX = col * cellWidth + cellWidth / 2;
-        const originY = row * cellHeight + cellHeight / 2;
-
-        let totalX = 0;
-        let totalY = 0;
-        let totalScale = 1;
-
-        for (const ripple of activeRipples) {
-          const age = now - ripple.startTime;
-          const radius = age * rippleSpeed;
-          const d = dist(originX, originY, ripple.x, ripple.y);
-          const distFromWaveFront = d - radius;
-          const waveWidth = 40;
-
-          if (Math.abs(distFromWaveFront) < waveWidth) {
-            const angle = (distFromWaveFront / waveWidth) * Math.PI * 2;
-            const displacement = Math.sin(angle);
-            const distanceDecay = Math.max(0, 1 - d / propagationDistance);
-            const strength = displacement * rippleIntensity * distanceDecay;
-
-            const dx = d === 0 ? 0 : (originX - ripple.x) / d;
-            const dy = d === 0 ? 0 : (originY - ripple.y) / d;
-
-            totalX += dx * strength;
-            totalY += dy * strength;
-
-            totalScale += (strength / rippleIntensity) * 0.3;
-          }
-        }
-
-        const finalScale = Math.max(0.5, Math.min(1.5, totalScale));
-
-        el.style.transform = `translate3d(${totalX.toFixed(
-          2
-        )}px, ${totalY.toFixed(2)}px, 0) scale(${finalScale.toFixed(2)})`;
-        el.style.opacity = Math.min(1, finalScale).toFixed(2);
-      }
-
-      // --- 2. Update Pool Float Physics ---
-      const float = floatPhysicsRef.current;
-
-      // Apply friction
-      float.vx *= FLOAT_FRICTION;
-      float.vy *= FLOAT_FRICTION;
-      float.vRotation *= 0.9;
-
-      // Interaction with ripples
-      for (const ripple of activeRipples) {
-        const age = now - ripple.startTime;
-        const radius = age * rippleSpeed;
-        const d = dist(float.x, float.y, ripple.x, ripple.y);
-        const waveWidth = 60;
-
-        if (Math.abs(d - radius) < waveWidth) {
-          const dx = float.x - ripple.x;
-          const dy = float.y - ripple.y;
-          const len = Math.sqrt(dx * dx + dy * dy) || 1;
-          const distanceDecay = Math.max(
-            0,
-            1 - d / (propagationDistance * 1.5)
-          );
-          const pushFactor =
-            (0.4 * rippleIntensity * distanceDecay) / FLOAT_MASS;
-
-          if (pushFactor > 0.01) {
-            float.vx += (dx / len) * pushFactor;
-            float.vy += (dy / len) * pushFactor;
-            float.vRotation += (Math.random() - 0.5) * pushFactor * 0.5;
+      const pointer = pointerRef.current;
+      if (pointer) {
+        const logical = clientToLogical(container, pointer.clientX, pointer.clientY);
+        if (logical) {
+          const last = lastRippleRef.current;
+          if (
+            !last ||
+            distSq(logical.x - last.x, logical.y - last.y) >= RIPPLE_MIN_DIST_SQ
+          ) {
+            ripplesRef.current.push({ x: logical.x, y: logical.y, startTime: now });
+            if (ripplesRef.current.length > MAX_RIPPLES) ripplesRef.current.shift();
+            lastRippleRef.current = logical;
           }
         }
       }
 
-      // Update position
-      float.x += float.vx;
-      float.y += float.vy;
-      float.rotation +=
-        float.vRotation + Math.sqrt(float.vx ** 2 + float.vy ** 2) * 0.1;
+      ripplesRef.current = ripplesRef.current.filter(
+        (r) => (now - r.startTime) * rippleSpeed < propagationDistance + RIPPLE_TAIL
+      );
 
-      // Boundary Collisions (Bounce)
-      if (float.x < FLOAT_RADIUS) {
-        float.x = FLOAT_RADIUS;
-        float.vx *= -0.4;
-      }
-      if (float.x > POOL_WIDTH - FLOAT_RADIUS) {
-        float.x = POOL_WIDTH - FLOAT_RADIUS;
-        float.vx *= -0.4;
-      }
-      if (float.y < FLOAT_RADIUS) {
-        float.y = FLOAT_RADIUS;
-        float.vy *= -0.4;
-      }
-      if (float.y > POOL_HEIGHT - FLOAT_RADIUS) {
-        float.y = POOL_HEIGHT - FLOAT_RADIUS;
-        float.vy *= -0.4;
+      const ripples = ripplesRef.current;
+
+      if (ripples.length > 0 || gridDirtyRef.current) {
+        drawGrid(
+          ctx,
+          gridRef.current,
+          letterSize,
+          ripples,
+          now,
+          rippleSpeed,
+          rippleIntensity,
+          propagationDistance
+        );
+        gridDirtyRef.current = ripples.length > 0;
       }
 
-      // Apply Float Transform
-      if (floatRef.current) {
-        floatRef.current.style.transform = `translate3d(${
-          float.x - FLOAT_RADIUS
-        }px, ${float.y - FLOAT_RADIUS}px, 5px) rotate(${float.rotation}deg)`;
+      const f = floatRef.current;
+      f.vx *= FLOAT_FRICTION;
+      f.vy *= FLOAT_FRICTION;
+      f.vRotation *= 0.9;
+
+      const floatReachSq = (propagationDistance * 1.5 + FLOAT_WAVE_WIDTH) ** 2;
+
+      for (const ripple of ripples) {
+        const dx = f.x - ripple.x;
+        const dy = f.y - ripple.y;
+        const d2 = distSq(dx, dy);
+        if (d2 > floatReachSq) continue;
+
+        const d = Math.sqrt(d2);
+        const radius = (now - ripple.startTime) * rippleSpeed;
+        if (Math.abs(d - radius) >= FLOAT_WAVE_WIDTH) continue;
+
+        const push =
+          FLOAT_PUSH * rippleIntensity * Math.max(0, 1 - d / (propagationDistance * 1.5));
+        if (push <= 0.01) continue;
+
+        const inv = d || 1;
+        f.vx += (dx / inv) * push;
+        f.vy += (dy / inv) * push;
+        f.vRotation += (Math.random() - 0.5) * push * 0.5;
       }
 
-      // Update Float Shadow
-      if (floatShadowRef.current) {
-        const shadowOffsetX = float.x * 0.1;
-        const shadowOffsetY = float.y * 0.057;
-        floatShadowRef.current.style.transform = `translate3d(${
-          float.x - 40 + shadowOffsetX
-        }px, ${float.y - 40 + shadowOffsetY}px, 0)`;
-      }
+      f.x += f.vx;
+      f.y += f.vy;
+      f.rotation += f.vRotation + Math.hypot(f.vx, f.vy) * 0.1;
 
-      animationFrameRef.current = requestAnimationFrame(update);
+      const bound = FLOAT_RADIUS;
+      ({ pos: f.x, vel: f.vx } = bounceAxis(f.x, f.vx, bound, POOL_WIDTH - bound));
+      ({ pos: f.y, vel: f.vy } = bounceAxis(f.y, f.vy, bound, POOL_HEIGHT - bound));
+
+      updateFloatElements(f, floatElRef.current, floatShadowElRef.current);
+
+      animationFrameRef.current = requestAnimationFrame(tick);
     };
 
-    return update;
-  }, [config]);
+    const onPointerMove = (e: PointerEvent) => {
+      pointerRef.current = { clientX: e.clientX, clientY: e.clientY };
+    };
+    const onPointerLeave = () => {
+      pointerRef.current = null;
+      lastRippleRef.current = null;
+    };
 
-  // Intersection Observer for iframe visibility detection
-  useEffect(() => {
+    container.addEventListener("pointermove", onPointerMove, { passive: true });
+    container.addEventListener("pointerleave", onPointerLeave, { passive: true });
+
     const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          isVisibleRef.current = entry.isIntersecting;
-          // If becoming visible, restart animation if it was paused
-          if (entry.isIntersecting && !animationFrameRef.current) {
-            const update = createUpdateLoop();
-            animationFrameRef.current = requestAnimationFrame(update);
-          }
-        });
+      ([entry]) => {
+        isVisibleRef.current = entry.isIntersecting;
+        ensureLoop();
       },
-      {
-        threshold: 0.01, // Trigger when at least 1% is visible
-        rootMargin: '50px', // Start animating slightly before entering viewport
-      }
+      { threshold: 0.01, rootMargin: "50px" }
     );
+    observer.observe(container);
 
-    const element = containerRef.current?.parentElement?.parentElement;
-    if (element) {
-      observer.observe(element);
-    }
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [createUpdateLoop]);
-
-  // Page Visibility API for parent page visibility
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      isVisibleRef.current = !document.hidden;
-      // If page becomes visible and animation is paused, restart it
-      if (!document.hidden && !animationFrameRef.current && containerRef.current) {
-        const update = createUpdateLoop();
-        animationFrameRef.current = requestAnimationFrame(update);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [createUpdateLoop]);
-
-  // Animation Loop
-  useEffect(() => {
-    const update = createUpdateLoop();
-    
-    // Only start animation if visible
-    if (isVisibleRef.current && !document.hidden) {
-      animationFrameRef.current = requestAnimationFrame(update);
-    }
-
-    return () => {
-      if (animationFrameRef.current) {
+    const onVisibilityChange = () => {
+      if (!document.hidden) ensureLoop();
+      else if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = undefined;
       }
     };
-  }, [config, gridItems.length, createUpdateLoop]);
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
-  const deckShadow =
-    Array.from(
-      { length: 16 },
-      (_, i) => `${i + 1}px ${i + 1}px 0px #9ca3af`
-    ).join(", ") + ", 30px 30px 40px rgba(0,0,0,0.2)";
+    ensureLoop();
+
+    return () => {
+      container.removeEventListener("pointermove", onPointerMove);
+      container.removeEventListener("pointerleave", onPointerLeave);
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, []);
 
   return (
     <div
       className="relative flex items-center justify-center pointer-events-none"
-      style={{
-        perspective: "1000px", // Hardcoded perspective since ViewConfig is removed
-        width: "100%",
-        height: "100%",
-      }}
+      style={{ perspective: "1000px", width: "100%", height: "100%" }}
     >
-      {/* 
-         Scaled Wrapper for Responsiveness 
-         This wrapper scales the entire pool (including deck) to fit within the viewport width.
-      */}
       <div
         className="relative transition-transform duration-300 ease-out pointer-events-auto origin-center"
         style={{
           transform: `scale(${scale})`,
-          width: TOTAL_WIDTH, // Ensure logic pixels match scale basis
+          width: TOTAL_WIDTH,
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
         }}
       >
-        {/* Shadow Casting (The ground shadow) */}
         <div className="absolute inset-0 bg-black/20 translate-y-12 translate-x-8 blur-xl rounded-2xl -z-10" />
 
-        {/* The Concrete Deck */}
         <div
           className="bg-gray-200 rounded-lg relative"
           style={{
             transformStyle: "preserve-3d",
             padding: `${DECK_PADDING}px`,
-            boxShadow: deckShadow,
+            boxShadow: DECK_SHADOW,
             backgroundImage: `linear-gradient(#d1d5db 1px, transparent 1px), linear-gradient(90deg, #d1d5db 1px, transparent 1px)`,
             backgroundSize: "24px 24px",
             backgroundColor: "#f3f4f6",
           }}
         >
-          {/* Ladder - Darker Silver */}
           <div
             className="absolute top-2 left-24 z-30 pointer-events-none"
             style={{ transform: "translateZ(20px)" }}
           >
             <div className="relative">
-              <div className="absolute top-0 w-2 h-20 bg-gray-300 rounded-t-full shadow-md left-0 border border-gray-300"></div>
-              <div className="absolute top-0 w-2 h-20 bg-gray-300 rounded-t-full shadow-md left-12 border border-gray-300"></div>
+              <div className="absolute top-0 w-2 h-20 bg-gray-300 rounded-t-full shadow-md left-0 border border-gray-300" />
+              <div className="absolute top-0 w-2 h-20 bg-gray-300 rounded-t-full shadow-md left-12 border border-gray-300" />
               {[1, 2].map((step) => (
                 <div
                   key={step}
@@ -443,32 +424,26 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
                   }}
                 />
               ))}
-              <div className="absolute -top-1 left-0 w-2 h-2 bg-gray-400 rounded-full opacity-50"></div>
-              <div className="absolute -top-1 left-12 w-2 h-2 bg-gray-400 rounded-full opacity-50"></div>
+              <div className="absolute -top-1 left-0 w-2 h-2 bg-gray-400 rounded-full opacity-50" />
+              <div className="absolute -top-1 left-12 w-2 h-2 bg-gray-400 rounded-full opacity-50" />
             </div>
           </div>
 
-          {/* Water Surface Container */}
           <div
             ref={containerRef}
             className="relative select-none cursor-crosshair touch-none overflow-hidden rounded-sm"
-            onMouseMove={onMouseMove}
-            onTouchMove={onTouchMove}
             style={{
               width: `${POOL_WIDTH}px`,
               height: `${POOL_HEIGHT}px`,
               transformStyle: "preserve-3d",
               backgroundColor: "#1E88E5",
-
               borderTop: "12px solid #9ca3af",
               borderLeft: "10px solid #858b94",
               borderRight: "1px solid rgba(255,255,255,0.3)",
               borderBottom: "1px solid rgba(255,255,255,0.3)",
-
               boxShadow: "inset 0 0 60px rgba(0,0,40,0.4)",
             }}
           >
-            {/* Caustics / Shimmer Overlay */}
             <div
               className="absolute inset-0 pointer-events-none z-0 opacity-30 mix-blend-screen"
               style={{
@@ -476,13 +451,10 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
                   "radial-gradient(circle at 50% 50%, rgba(255,255,255,0.2) 0%, transparent 50%), radial-gradient(circle at 20% 20%, rgba(255,255,255,0.2) 0%, transparent 40%)",
               }}
             />
-
-            {/* Water Highlight Gradient (Surface reflection) */}
             <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/10 pointer-events-none z-10" />
 
-            {/* Float Shadow */}
             <div
-              ref={floatShadowRef}
+              ref={floatShadowElRef}
               style={{
                 position: "absolute",
                 top: 0,
@@ -493,17 +465,24 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
                 background: "black",
                 opacity: 0.5,
                 filter: "blur(5px)",
-                maskImage: "radial-gradient(transparent 30%, black 31%)",
-                WebkitMaskImage: "radial-gradient(transparent 30%, black 31%)",
+                maskImage: RING_MASK,
+                WebkitMaskImage: RING_MASK,
                 pointerEvents: "none",
                 zIndex: 15,
                 willChange: "transform",
               }}
             />
 
-            {/* Interactive Pool Float */}
+            <canvas
+              ref={canvasRef}
+              width={POOL_WIDTH}
+              height={POOL_HEIGHT}
+              className="absolute inset-0 z-20 pointer-events-none"
+              style={{ width: "100%", height: "100%" }}
+            />
+
             <div
-              ref={floatRef}
+              ref={floatElRef}
               style={{
                 position: "absolute",
                 top: 0,
@@ -513,8 +492,8 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
                 borderRadius: "50%",
                 background:
                   "repeating-conic-gradient(from 0deg, #FFC107 0deg 30deg, #FFFFFF 30deg 60deg)",
-                maskImage: "radial-gradient(transparent 30%, black 31%)",
-                WebkitMaskImage: "radial-gradient(transparent 30%, black 31%)",
+                maskImage: RING_MASK,
+                WebkitMaskImage: RING_MASK,
                 boxShadow: `
                   inset -3px -3px 8px rgba(0,0,0,0.25),
                   inset 3px 3px 8px rgba(255,255,255,0.6),
@@ -526,41 +505,6 @@ const WaterPool: React.FC<WaterPoolProps> = ({ config, resetTrigger }) => {
                 willChange: "transform",
               }}
             />
-
-            {/* Grid */}
-            <div
-              className="relative z-20"
-              style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${config.gridDensity}, 1fr)`,
-                width: "100%",
-                height: "100%",
-                gap: "0px",
-              }}
-            >
-              {gridItems.map((item, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-center overflow-visible pointer-events-none"
-                >
-                  <span
-                    ref={(el) => {
-                      letterRefs.current[i] = el;
-                    }}
-                    style={{
-                      fontSize: `${config.letterSize}px`,
-                      color: item.color,
-                      willChange: "transform, opacity",
-                      transformOrigin: "center center",
-                      textShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                    }}
-                    className="font-medium inline-block"
-                  >
-                    {item.char}
-                  </span>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </div>
